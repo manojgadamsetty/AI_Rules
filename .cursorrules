@@ -1,0 +1,170 @@
+# Cursor Rules for iOS Development
+# Senior iOS Architect Enforced Standards
+
+## HARD CONSTRAINT: MVVM-C Architecture Mandatory
+All code generation MUST follow strict MVVM-C (Model-View-ViewModel-Coordinator) pattern.
+
+### Layer Definitions (MANDATORY)
+- **Model Layer**: Data structures, Codable conformance, business logic entities
+- **View Layer**: SwiftUI `View` structs OR UIKit `UIViewController` only - NO business logic
+- **ViewModel Layer**: State management via `@StateObject`, `@Published`, `@MainActor` decorated
+- **Coordinator Layer**: Navigation, flow control, dependency injection - ALL routing happens here
+
+### CRITICAL RULE: View Components
+- SwiftUI `View` bodies must contain ONLY layout and property bindings
+- FORBIDDEN: API calls, data mutations, async operations in View code
+- FORBIDDEN: Passing closures directly - use `@Environment`, `@StateObject`, or Coordinator delegation
+- Every View must have a `@StateObject var viewModel: YourViewModel`
+
+### CRITICAL RULE: ViewModel Requirements
+- MUST be a `class` decorated with `@MainActor`
+- MUST use `@Published` properties for bindable state
+- MUST implement `ObservableObject` protocol
+- MUST NOT directly manipulate UI layers
+- All async operations MUST use `async/await`
+
+### CRITICAL RULE: Coordinator Pattern
+- ONE Coordinator per flow (Authentication, MainApp, Profile, etc.)
+- Coordinator MUST manage ALL navigation decisions
+- Coordinator MUST create and inject ViewModels
+- Coordinator MUST hold strong references to child coordinators
+- Protocol-based delegation for passing data between VCs
+
+### CRITICAL RULE: Memory Management
+EVERY escaping closure MUST use `[weak self]`:
+```swift
+someAsyncFunc { [weak self] result in
+    guard let self = self else { return }
+    // handle result
+}
+```
+FORBIDDEN: `[self]` in escaping closures without explicit lifetime management.
+
+## HARD CONSTRAINT: Swift Concurrency (async/await ONLY)
+- FORBIDDEN: `DispatchQueue.main.async` in new code
+- FORBIDDEN: `completion` handlers in new APIs
+- FORBIDDEN: `.eraseToAnyPublisher()` patterns
+- MANDATORY: Use `async/await` with `@MainActor` for UI updates
+- MANDATORY: Use `Task { }` for fire-and-forget async operations
+
+### Concurrency Pattern (MANDATORY)
+```swift
+@MainActor
+final class MyViewModel: ObservableObject {
+    @Published var data: [Item] = []
+    
+    func fetchData() async {
+        do {
+            self.data = try await service.fetchItems()
+        } catch {
+            self.error = error
+        }
+    }
+}
+```
+
+## HARD CONSTRAINT: The Missing File Rule
+- AI CANNOT and WILL NOT edit `project.pbxproj`
+- When new files are created, AI MUST emit a WARNING block
+- WARNING format:
+```
+[MANUAL ACTION REQUIRED]
+File created: [relative/path/to/File.swift]
+→ Xcode: Right-click target → Add Files to [TargetName]
+  OR
+→ Terminal: xcodegen generate (if xcodegen is configured)
+```
+- AI MUST verify file additions on EVERY code generation turn
+
+## HARD CONSTRAINT: Planning Workflow (MANDATORY)
+EVERY response that involves code generation MUST start with a Plan block:
+
+```
+## Plan
+1. [What will be created/modified]
+2. [Architecture decision and layer assignment]
+3. [Memory management approach]
+4. [Concurrency pattern]
+5. [Manual actions required (if any)]
+```
+
+Do NOT write code without a Plan. If user asks for code, generate Plan first, pause, and wait for confirmation.
+
+## HARD CONSTRAINT: Code Review Gates
+Before generating any code, verify:
+- [ ] Architecture layer clearly assigned (M/V/VM/C)
+- [ ] No business logic in View layer
+- [ ] All async operations use async/await
+- [ ] All escaping closures use [weak self]
+- [ ] ViewModel is @MainActor and @Published
+- [ ] Coordinator manages all navigation
+- [ ] @State vs @StateObject used correctly
+- [ ] No force unwrapping (unless explicitly justified)
+
+## SwiftUI Preferences (When Applicable)
+- PREFERRED: Composition over large views (extract subviews)
+- PREFERRED: `.onChange(of:)` for reactive logic
+- PREFERRED: `@Environment` for dependency injection
+- FORBIDDEN: `.onAppear { asyncCall() }` - use task modifier instead
+- MANDATORY: `.task { await viewModel.load() }` for lifecycle loading
+
+## UIKit Preferences (When Applicable)
+- PREFERRED: Protocol-based delegation pattern
+- MANDATORY: Memory management audits (delegate/datasource weak refs)
+- FORBIDDEN: Direct ViewController-to-ViewController instantiation
+- MANDATORY: Use Coordinator for all VC transitions
+
+## Code Style Enforcement
+- Naming: `camelCase` for variables, `PascalCase` for types
+- Access Control: Default to `private`, use `fileprivate` for file-scoped
+- Optionals: Use `guard` statements, avoid force unwrap
+- Comments: Explain "why", not "what" - code is readable
+- Line Length: Max 120 characters (soft limit)
+
+## Project Structure (MANDATORY)
+```
+Project/
+├── App/
+│   ├── AppDelegate.swift
+│   └── SceneDelegate.swift
+├── Features/
+│   ├── Authentication/
+│   │   ├── Screens/ (Views)
+│   │   ├── ViewModels/
+│   │   ├── Coordinators/
+│   │   └── Models/
+│   ├── MainApp/
+│   │   └── [same structure]
+│   └── Profile/
+│       └── [same structure]
+├── Services/ (API, Storage, etc.)
+├── Utils/ (Extensions, Helpers)
+└── Resources/ (Assets, Strings)
+```
+
+## Forbidden Patterns (ZERO TOLERANCE)
+- [FORBIDDEN] `singleton` patterns (use Coordinator injection)
+- [FORBIDDEN] View-directly-calling services
+- [FORBIDDEN] Static let sharedInstance
+- [FORBIDDEN] @EnvironmentObject for mutable state (use @StateObject + Coordinator)
+- [FORBIDDEN] Mixing SwiftUI and UIKit in same file
+- [FORBIDDEN] Retain cycles in escaping closures
+- [FORBIDDEN] Synchronous network calls
+- [FORBIDDEN] Loose error handling (no try/catch for throwing functions)
+
+## Testing Guidance
+- Every ViewModel must be testable in isolation
+- Services must be mockable via protocols
+- Coordinators should be tested for navigation logic
+- Use `XCTest` with arrange-act-assert pattern
+
+## When in Doubt
+- Ask the user before proceeding with architectural decisions
+- Suggest splitting large ViewModels (>300 lines = smell)
+- Flag potential memory leaks before writing code
+- Recommend Coordinator injection over @EnvironmentObject
+- Suggest protocol extraction for testability
+
+---
+**This document is the source of truth for all code generation in this project.**
+**Cursor will enforce these rules on every turn.**
